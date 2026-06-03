@@ -20,7 +20,7 @@
   // These take highest priority over any auto-detected name.
   // ============================================================
   const ACCOUNT_NAMES = {
-    '123456789012': 'CUSTNAME',
+    // '123456789012': 'CUSTNAME',
     // '987654321098': 'my-dev-account',
   };
 
