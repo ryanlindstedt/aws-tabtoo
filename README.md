@@ -1,4 +1,4 @@
-# AWS TabToo
+# AWS Tabtoo
 
 A Tampermonkey/Greasemonkey userscript that prefixes your AWS Console browser tab titles with the account name or ID — making it easy to tell multiple AWS accounts apart at a glance.
 
@@ -8,7 +8,7 @@ When working with multiple AWS accounts, every tab just says "EC2 - AWS Console"
 
 ## The Solution
 
-AWS TabToo detects the active account and prepends it to the tab title:
+AWS Tabtoo detects the active account and prepends it to the tab title:
 
 ```
 [my-prod-account] EC2 - AWS Console
@@ -70,4 +70,4 @@ Detection sources (checked in order of speed):
 
 ## License
 
-[MIT](LICENSE)
+[GPL-3.0](LICENSE)
