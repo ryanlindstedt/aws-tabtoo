@@ -18,6 +18,8 @@ AWS Tabtoo detects the active account and prepends it to the tab title:
 <img src="images/example-tabs-before.png" alt="EC2 - AWS Console<br />S3 - AWS Console" />
 <img src="images/example-tabs-after.png" alt="EC2 - AWS Console<br />S3 - AWS Console" />
 
+![alt text](images/example-tabs-after.png)
+
 ## Features
 
 - **Zero-config** — works out of the box by auto-detecting account name/alias
