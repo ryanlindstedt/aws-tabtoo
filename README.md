@@ -7,18 +7,13 @@ A Tampermonkey/Greasemonkey userscript that prefixes your AWS Console browser ta
 When working with multiple AWS accounts, every tab just says "EC2 - AWS Console" or "S3 - AWS Console." Good luck figuring out which account you're about to accidentally delete something from.
 
 ## The Solution
+AWS Tabtoo detects the active account and prepends it to the tab title. The following examples showcase what it looks like when each tab is connected to a different AWS account.
 
-AWS Tabtoo detects the active account and prepends it to the tab title:
+#### Tabs normally without AWS Tabtoo:
+![S3 buckets](images/example-tabs-before.png)
 
-```
-[my-prod-account] EC2 - AWS Console
-[my-dev-account] S3 - AWS Console
-```
-
-<img src="images/example-tabs-before.png" alt="EC2 - AWS Console<br />S3 - AWS Console" />
-<img src="images/example-tabs-after.png" alt="EC2 - AWS Console<br />S3 - AWS Console" />
-
-![alt text](images/example-tabs-after.png)
+#### Tabs with AWS Tabtoo:
+![[AcmeTool] S3 buckets](images/example-tabs-after.png)
 
 ## Features
 
