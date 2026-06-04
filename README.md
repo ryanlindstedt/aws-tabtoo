@@ -15,7 +15,8 @@ AWS Tabtoo detects the active account and prepends it to the tab title:
 [my-dev-account] S3 - AWS Console
 ```
 
-<img src="screenshots/example-tabs-before.png" alt="EC2 - AWS Console<br />S3 - AWS Console" />
+<img src="images/example-tabs-before.png" alt="EC2 - AWS Console<br />S3 - AWS Console" />
+<img src="images/example-tabs-after.png" alt="EC2 - AWS Console<br />S3 - AWS Console" />
 
 ## Features
 
