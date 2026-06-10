@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AWS Tabtoo
 // @namespace    https://github.com/ryanlindstedt/aws-tabtoo
-// @version      1.0.0
+// @version      1.1.0
 // @description  Prefixes AWS Console browser tab titles with the account name or ID for easy multi-account identification
 // @author       ryanlindstedt
 // @match        https://*.console.aws.amazon.com/*
