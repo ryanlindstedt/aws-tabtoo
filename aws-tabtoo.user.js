@@ -6,6 +6,7 @@
 // @author       ryanlindstedt
 // @match        https://*.console.aws.amazon.com/*
 // @match        https://*.console.amazonaws-us-gov.com/*
+// @match        https://*.awsapps.com/start/*
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
@@ -22,6 +23,16 @@
   const ACCOUNT_NAMES = {
     // '123456789012': 'CUSTNAME',
     // '987654321098': 'my-dev-account',
+  };
+
+  // ============================================================
+  // DIRECTORY ID → CUSTOM NAME MAPPING (AWS Access Portal)
+  // Add your SSO directory IDs here. The key is the directory ID
+  // from the URL (e.g. 'd-90661c91cb'), and the value is the
+  // label shown in the title.
+  // ============================================================
+  const DIRECTORY_NAMES = {
+    // 'd-90661c91cb': 'My SSO Portal',
   };
 
   let accountId = null;
@@ -44,6 +55,25 @@
     if (document.title !== newTitle) {
       document.title = newTitle;
     }
+  }
+
+  // --- AWS Access Portal detection ---
+
+  function isAccessPortal() {
+    return location.hostname.endsWith('.awsapps.com');
+  }
+
+  function getPortalDirectoryId() {
+    // Extract directory ID from hostname, e.g. 'd-90661c91cb' from 'd-90661c91cb.awsapps.com'
+    const match = location.hostname.match(/^([^.]+)\.awsapps\.com$/);
+    return match ? match[1] : null;
+  }
+
+  function getPortalDisplayName() {
+    const directoryId = getPortalDirectoryId();
+    if (directoryId && DIRECTORY_NAMES[directoryId]) return DIRECTORY_NAMES[directoryId];
+    if (directoryId) return directoryId;
+    return 'unknown';
   }
 
   // --- Account ID extraction (fast path first) ---
@@ -156,6 +186,27 @@
   // --- Main execution ---
 
   function init() {
+    // Handle AWS Access Portal pages separately — they don't have account info
+    if (isAccessPortal()) {
+      const portalName = getPortalDisplayName();
+      const updatePortalTitle = () => {
+        const current = document.title;
+        const stripped = current.replace(/^\[.*?\]\s*/, '');
+        const newTitle = `[${portalName}] ${stripped}`;
+        if (document.title !== newTitle) {
+          document.title = newTitle;
+        }
+      };
+      updatePortalTitle();
+      // Observe title changes for SPA navigation within the portal
+      const titleEl = document.querySelector('title');
+      if (titleEl) {
+        new MutationObserver(() => updatePortalTitle())
+          .observe(titleEl, { childList: true, characterData: true, subtree: true });
+      }
+      return;
+    }
+
     // Fast path: try URL first (no DOM access needed)
     accountId = fetchAccountIdFromUrl();
 
