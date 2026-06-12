@@ -1,12 +1,14 @@
 // ==UserScript==
 // @name         AWS Tabtoo
 // @namespace    https://github.com/ryanlindstedt/aws-tabtoo
-// @version      1.1.0
+// @version      1.2.0
 // @description  Prefixes AWS Console browser tab titles with the account name or ID for easy multi-account identification
 // @author       ryanlindstedt
 // @match        https://*.console.aws.amazon.com/*
 // @match        https://*.console.amazonaws-us-gov.com/*
 // @match        https://*.awsapps.com/start/*
+// @updateURL    https://raw.githubusercontent.com/ryanlindstedt/aws-tabtoo/main/aws-tabtoo.user.js
+// @downloadURL  https://raw.githubusercontent.com/ryanlindstedt/aws-tabtoo/main/aws-tabtoo.user.js
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
@@ -35,27 +37,16 @@
     // 'd-90661c91cb': 'My SSO Portal',
   };
 
+  // --- State ---
+
   let accountId = null;
   let accountName = null;
-  let resolved = false; // true once we have a custom name or account name
+  let resolved = false; // true once we have a definitive display name
+  let lastHref = location.href; // for SPA navigation detection
+  let updatingTitle = false; // re-entrancy guard for title observer
 
-  // Resolution order: Custom name → Account name → Account ID → "unknown"
-  function getDisplayName() {
-    if (accountId && ACCOUNT_NAMES[accountId]) return ACCOUNT_NAMES[accountId];
-    if (accountName) return accountName;
-    if (accountId) return accountId;
-    return 'unknown';
-  }
-
-  function updateTitle() {
-    const displayName = getDisplayName();
-    const current = document.title;
-    const stripped = current.replace(/^\[.*?\]\s*/, '');
-    const newTitle = `[${displayName}] ${stripped}`;
-    if (document.title !== newTitle) {
-      document.title = newTitle;
-    }
-  }
+  // Zero-width space used as a marker to identify our prefix vs legitimate brackets
+  const PREFIX_MARKER = '\u200B';
 
   // --- AWS Access Portal detection ---
 
@@ -64,28 +55,47 @@
   }
 
   function getPortalDirectoryId() {
-    // Extract directory ID from hostname, e.g. 'd-90661c91cb' from 'd-90661c91cb.awsapps.com'
     const match = location.hostname.match(/^([^.]+)\.awsapps\.com$/);
     return match ? match[1] : null;
   }
 
-  function getPortalDisplayName() {
-    const directoryId = getPortalDirectoryId();
-    if (directoryId && DIRECTORY_NAMES[directoryId]) return DIRECTORY_NAMES[directoryId];
-    if (directoryId) return directoryId;
+  // --- Unified display name resolution ---
+
+  function resolveDisplayName() {
+    if (isAccessPortal()) {
+      const directoryId = getPortalDirectoryId();
+      if (directoryId && DIRECTORY_NAMES[directoryId]) return DIRECTORY_NAMES[directoryId];
+      if (directoryId) return directoryId;
+      return 'unknown';
+    }
+    if (accountId && ACCOUNT_NAMES[accountId]) return ACCOUNT_NAMES[accountId];
+    if (accountName) return accountName;
+    if (accountId) return accountId;
     return 'unknown';
   }
 
-  // --- Account ID extraction (fast path first) ---
+  // --- Unified title update (single code path for all page types) ---
+
+  function updateTitle() {
+    if (updatingTitle) return;
+    const displayName = resolveDisplayName();
+    const current = document.title;
+    // Strip our own prefix using the zero-width space marker
+    const stripped = current.replace(new RegExp(`^\\[.*?\\]${PREFIX_MARKER}\\s*`), '');
+    const newTitle = `[${displayName}]${PREFIX_MARKER} ${stripped}`;
+    if (document.title !== newTitle) {
+      updatingTitle = true;
+      document.title = newTitle;
+      updatingTitle = false;
+    }
+  }
+
+  // --- Account ID extraction (cheapest methods first) ---
 
   function fetchAccountIdFromUrl() {
-    // AWS console URLs use the pattern: {accountId}-{hash}.{region}.console.aws.amazon.com
-    // e.g. https://004813221592-y2jf7tih.us-east-2.console.aws.amazon.com/...
-    const hostname = location.hostname;
-    const subdomainMatch = hostname.match(/^(\d{12})-/);
-    if (subdomainMatch) return subdomainMatch[1];
-
-    return null;
+    // Pattern: {accountId}-{hash}.{region}.console.aws.amazon.com
+    const subdomainMatch = location.hostname.match(/^(\d{12})-/);
+    return subdomainMatch ? subdomainMatch[1] : null;
   }
 
   function fetchAccountIdFromDom() {
@@ -118,7 +128,7 @@
 
   function fetchAccountName() {
     // Method 1: account menu button text ("AccountName @ 1234-5678-9012")
-    // This is the cheapest check — single querySelector, no iteration
+    // Single querySelector, most reliable indicator
     const menuBtn = document.querySelector('[data-testid="awsc-nav-account-menu-button"]');
     if (menuBtn) {
       const text = menuBtn.textContent.trim();
@@ -126,17 +136,8 @@
       if (aliasMatch) return aliasMatch[1].trim();
     }
 
-    // Method 2: button with aria-label "Copy account name"
-    const copyBtn = document.querySelector('button[aria-label="Copy account name"]');
-    if (copyBtn) {
-      const wrapper = copyBtn.closest('span[class*="root"]');
-      if (wrapper && wrapper.nextElementSibling) {
-        const name = wrapper.nextElementSibling.textContent.trim();
-        if (name) return name;
-      }
-    }
-
-    // Method 3: inline scripts for accountAlias or accountName
+    // Method 2: inline scripts for accountAlias or accountName
+    // More stable than DOM structure — relies on data, not layout
     const scripts = document.querySelectorAll('script:not([src])');
     for (let i = 0; i < scripts.length; i++) {
       const text = scripts[i].textContent;
@@ -147,10 +148,20 @@
       if (m2) return m2[1];
     }
 
+    // Method 3: button with aria-label "Copy account name" (fragile — relies on sibling structure)
+    const copyBtn = document.querySelector('button[aria-label="Copy account name"]');
+    if (copyBtn) {
+      const wrapper = copyBtn.closest('span[class*="root"]');
+      if (wrapper && wrapper.nextElementSibling) {
+        const name = wrapper.nextElementSibling.textContent.trim();
+        if (name) return name;
+      }
+    }
+
     return null;
   }
 
-  // --- Observers (lightweight) ---
+  // --- Title observer (with re-entrancy guard) ---
 
   function observeTitleChanges() {
     const titleEl = document.querySelector('title');
@@ -159,55 +170,94 @@
       .observe(titleEl, { childList: true, characterData: true, subtree: true });
   }
 
-  // Targeted observer: only watches the nav area for account name appearance
-  function observeAccountName() {
-    // Find the narrowest container — the top nav bar
-    const target =
-      document.querySelector('[data-testid="awsc-nav-account-menu-button"]')?.closest('nav, header') ||
-      document.querySelector('header') ||
-      document.body;
+  // --- Account name observer (polling instead of broad body observer) ---
 
-    const observer = new MutationObserver(() => {
-      const name = fetchAccountName();
-      if (name) {
-        accountName = name;
-        resolved = true;
-        updateTitle();
-        observer.disconnect(); // Job done, stop watching
+  function pollForAccountName() {
+    // Try the targeted observer first if the nav element exists
+    const navTarget =
+      document.querySelector('[data-testid="awsc-nav-account-menu-button"]')?.closest('nav, header') ||
+      document.querySelector('header');
+
+    if (navTarget) {
+      // Narrow observer — only watches the nav area
+      const observer = new MutationObserver(() => {
+        const name = fetchAccountName();
+        if (name) {
+          accountName = name;
+          resolved = true;
+          updateTitle();
+          observer.disconnect();
+        }
+      });
+      observer.observe(navTarget, { childList: true, subtree: true });
+      setTimeout(() => observer.disconnect(), 30000);
+    } else {
+      // Fallback: poll every 500ms instead of observing entire body
+      let attempts = 0;
+      const maxAttempts = 60; // 30 seconds at 500ms intervals
+      const interval = setInterval(() => {
+        attempts++;
+        const name = fetchAccountName();
+        if (name) {
+          accountName = name;
+          resolved = true;
+          updateTitle();
+          clearInterval(interval);
+        } else if (attempts >= maxAttempts) {
+          clearInterval(interval);
+        }
+      }, 500);
+    }
+  }
+
+  // --- SPA navigation detection ---
+
+  function watchForNavigation() {
+    // Poll for URL changes to detect SPA navigation and account switches
+    setInterval(() => {
+      if (location.href !== lastHref) {
+        lastHref = location.href;
+        onNavigate();
+      }
+    }, 1000);
+
+    // Also catch popstate events (back/forward navigation)
+    window.addEventListener('popstate', () => {
+      if (location.href !== lastHref) {
+        lastHref = location.href;
+        onNavigate();
       }
     });
+  }
 
-    observer.observe(target, { childList: true, subtree: true });
+  function onNavigate() {
+    // Re-run account detection — the user may have switched roles/accounts
+    const newAccountId = fetchAccountIdFromUrl() || fetchAccountIdFromDom();
+    const newAccountName = fetchAccountName();
 
-    // Safety: disconnect after 30s regardless to avoid long-running observers
-    setTimeout(() => observer.disconnect(), 30000);
+    // Only update if something actually changed
+    if (newAccountId !== accountId || newAccountName !== accountName) {
+      accountId = newAccountId;
+      accountName = newAccountName;
+      resolved = !!(accountId && ACCOUNT_NAMES[accountId]) || !!accountName;
+    }
+
+    updateTitle();
   }
 
   // --- Main execution ---
 
   function init() {
-    // Handle AWS Access Portal pages separately — they don't have account info
+    // Access Portal pages: resolve name from hostname, no account detection needed
     if (isAccessPortal()) {
-      const portalName = getPortalDisplayName();
-      const updatePortalTitle = () => {
-        const current = document.title;
-        const stripped = current.replace(/^\[.*?\]\s*/, '');
-        const newTitle = `[${portalName}] ${stripped}`;
-        if (document.title !== newTitle) {
-          document.title = newTitle;
-        }
-      };
-      updatePortalTitle();
-      // Observe title changes for SPA navigation within the portal
-      const titleEl = document.querySelector('title');
-      if (titleEl) {
-        new MutationObserver(() => updatePortalTitle())
-          .observe(titleEl, { childList: true, characterData: true, subtree: true });
-      }
+      resolved = true;
+      updateTitle();
+      observeTitleChanges();
+      watchForNavigation();
       return;
     }
 
-    // Fast path: try URL first (no DOM access needed)
+    // Console pages: try URL first (no DOM access needed)
     accountId = fetchAccountIdFromUrl();
 
     // If URL didn't have it, check the DOM
@@ -229,10 +279,11 @@
     // Apply title immediately with whatever we have
     updateTitle();
     observeTitleChanges();
+    watchForNavigation();
 
-    // If we don't have the best display name yet, set up a targeted observer
+    // If we don't have the best display name yet, poll for it
     if (!resolved) {
-      observeAccountName();
+      pollForAccountName();
     }
   }
 
